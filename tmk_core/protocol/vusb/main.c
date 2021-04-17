@@ -27,6 +27,10 @@
 #include "wait.h"
 #include "sendchar.h"
 
+#ifdef EEPROM_DRIVER
+#    include "eeprom_driver.h"
+#endif
+
 #ifdef SLEEP_LED_ENABLE
 #    include "sleep_led.h"
 #endif
@@ -114,6 +118,11 @@ int main(void) {
     // clock prescaler
     clock_prescale_set(clock_div_1);
 #endif
+
+#ifdef EEPROM_DRIVER
+    eeprom_driver_init();
+#endif
+
     keyboard_setup();
     setup_usb();
     sei();

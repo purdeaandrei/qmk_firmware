@@ -89,6 +89,10 @@ extern keymap_config_t keymap_config;
 #    include "joystick.h"
 #endif
 
+#ifdef EEPROM_DRIVER
+#    include "eeprom_driver.h"
+#endif
+
 // https://cdn.sparkfun.com/datasheets/Wireless/Bluetooth/bluetooth_cr_UG-v1.0r.pdf#G7.663734
 static inline uint16_t CONSUMER2RN42(uint16_t usage) {
     switch (usage) {
@@ -1023,6 +1027,9 @@ int main(void) {
 #endif
 
     setup_mcu();
+#ifdef EEPROM_DRIVER
+    eeprom_driver_init();
+#endif
     keyboard_setup();
     setup_usb();
     sei();
