@@ -48,8 +48,8 @@
 #        define READ_PIN(pin) readPin(pin)
 #    endif
 #else
-#    if defined(PAL_MODE_OUTPUT_OPENDRAIN) && defined(PAL_STM32_MODE_OUTPUT) && defined(PAL_STM32_MODE_OUTPUT)
-#        define INITIALISE_PIN(pin) palSetLineMode((pin), PAL_MODE_OUTPUT_OPENDRAIN | PAL_STM32_MODE_OUTPUT | PAL_STM32_MODE_OUTPUT)
+#    if defined(PAL_STM32_MODE_OUTPUT) && defined(PAL_STM32_OTYPE_OPENDRAIN) && defined(PAL_STM32_PUPDR_PULLUP)
+#        define INITIALISE_PIN(pin) palSetLineMode((pin), PAL_STM32_MODE_OUTPUT | PAL_STM32_OTYPE_OPENDRAIN | PAL_STM32_PUPDR_PULLUP)
 #        define WRITE_PIN(pin, value) writePin((pin), (value))
 #        define READ_PIN(pin) readPin(pin)
 #    else
