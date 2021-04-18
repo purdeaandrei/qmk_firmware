@@ -238,7 +238,7 @@ Stop the current I2C transaction.
 
 ## I2C bitbang driver
 
-The I2C bitbang driver can be enabled on any targeted platform, with varying performance.
+The I2C bitbang driver can be enabled on avr and chibios targets, with varying performance.
 To enable it set `I2C_DRIVER = bitbang` in `rules.mk`
 
 ### Configuration options
