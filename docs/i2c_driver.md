@@ -248,7 +248,7 @@ To enable it set `I2C_DRIVER = bitbang` in `rules.mk`
 |`I2C_BITBANG_SDA_PIN`      | Selects which GPIO the SDA line is connected to                                                                 | not defined                                     |
 |`I2C_BITBANG_SCL_PIN`      | Selects which GPIO the SCL line is connected to                                                                 | not defined                                     |
 |`I2C_BITBANG_STANDARD_MODE`| Defining this will configure the driver for 100kHz standard mode. If not defined, it will be in 400kHz fast mode| not defined                                     |
-|`I2C_BITBANG_FREQUENCY_KHZ`| The taget SCL clock frequency in kHz                                                                            | 100 or 400 (depending on what mode is selected) |
+|`I2C_BITBANG_FREQUENCY_KHZ`| The target SCL clock frequency in kHz                                                                           | 100 or 400 (depending on what mode is selected) |
 
 ### Performance
 
