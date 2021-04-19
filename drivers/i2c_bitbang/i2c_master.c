@@ -264,8 +264,8 @@ i2c_status_t i2c_start(uint8_t address, uint16_t timeout) {
     I2C_BITBANG_WAIT_NS(T_SCL_CLOCK_ACTUAL_HIGH_PERIOD_NS);
 #endif
     WRITE_PIN(I2C_BITBANG_SCL_PIN, 0);
-    if (ack != 0) return I2C_STATUS_ERROR;
     started = true;
+    if (ack != 0) return I2C_STATUS_ERROR;
     return I2C_STATUS_SUCCESS;
 }
 
