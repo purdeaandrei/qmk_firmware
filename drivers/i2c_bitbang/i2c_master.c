@@ -145,7 +145,7 @@ static i2c_status_t i2c_try_to_recover_potentially_locked_up_bus(uint16_t timeou
         WRITE_PIN(I2C_BITBANG_SCL_PIN, 1);
         while (READ_PIN(I2C_BITBANG_SCL_PIN) == 0) {
             /* wait for clock stretching */
-            if (TIMEOUT_HAS_IT_TIMED_OUT(init_timeout_counter, timeout)) {
+            if ((timeout != I2C_TIMEOUT_INFINITE) && TIMEOUT_HAS_IT_TIMED_OUT(init_timeout_counter, timeout)) {
                 return I2C_STATUS_TIMEOUT;
             }
         }
@@ -161,7 +161,7 @@ static i2c_status_t i2c_try_to_recover_potentially_locked_up_bus(uint16_t timeou
     WRITE_PIN(I2C_BITBANG_SCL_PIN, 1);
     while (READ_PIN(I2C_BITBANG_SCL_PIN) == 0) {
         /* wait for clock stretching */
-        if (TIMEOUT_HAS_IT_TIMED_OUT(init_timeout_counter, timeout)) {
+        if ((timeout != I2C_TIMEOUT_INFINITE) && TIMEOUT_HAS_IT_TIMED_OUT(init_timeout_counter, timeout)) {
             return I2C_STATUS_TIMEOUT;
         }
     }
@@ -204,7 +204,7 @@ i2c_status_t i2c_start(uint8_t address, uint16_t timeout) {
         WRITE_PIN(I2C_BITBANG_SCL_PIN, 1);
         while (READ_PIN(I2C_BITBANG_SCL_PIN) == 0) {
             /* wait for clock stretching */
-            if (TIMEOUT_HAS_IT_TIMED_OUT(init_timeout_counter, timeout)) {
+            if ((timeout != I2C_TIMEOUT_INFINITE) && TIMEOUT_HAS_IT_TIMED_OUT(init_timeout_counter, timeout)) {
                 return I2C_STATUS_TIMEOUT;
             }
         }
@@ -223,7 +223,7 @@ i2c_status_t i2c_start(uint8_t address, uint16_t timeout) {
         WRITE_PIN(I2C_BITBANG_SCL_PIN, 1);
         while (READ_PIN(I2C_BITBANG_SCL_PIN) == 0) {
             /* wait for clock stretching */
-            if (TIMEOUT_HAS_IT_TIMED_OUT(init_timeout_counter, timeout)) {
+            if ((timeout != I2C_TIMEOUT_INFINITE) && TIMEOUT_HAS_IT_TIMED_OUT(init_timeout_counter, timeout)) {
                 return I2C_STATUS_TIMEOUT;
             }
         }
@@ -246,7 +246,7 @@ i2c_status_t i2c_start(uint8_t address, uint16_t timeout) {
     WRITE_PIN(I2C_BITBANG_SCL_PIN, 1);
     while (READ_PIN(I2C_BITBANG_SCL_PIN) == 0) {
         /* wait for clock stretching */
-        if (TIMEOUT_HAS_IT_TIMED_OUT(init_timeout_counter, timeout)) {
+        if ((timeout != I2C_TIMEOUT_INFINITE) && TIMEOUT_HAS_IT_TIMED_OUT(init_timeout_counter, timeout)) {
             return I2C_STATUS_TIMEOUT;
         }
     }
@@ -285,7 +285,7 @@ i2c_status_t i2c_write(uint8_t data, uint16_t timeout) {
         WRITE_PIN(I2C_BITBANG_SCL_PIN, 1);
         while (READ_PIN(I2C_BITBANG_SCL_PIN) == 0) {
             /* wait for clock stretching */
-            if (TIMEOUT_HAS_IT_TIMED_OUT(init_timeout_counter, timeout)) {
+            if ((timeout != I2C_TIMEOUT_INFINITE) && TIMEOUT_HAS_IT_TIMED_OUT(init_timeout_counter, timeout)) {
                 return I2C_STATUS_TIMEOUT;
             }
         }
@@ -308,7 +308,7 @@ i2c_status_t i2c_write(uint8_t data, uint16_t timeout) {
     WRITE_PIN(I2C_BITBANG_SCL_PIN, 1);
     while (READ_PIN(I2C_BITBANG_SCL_PIN) == 0) {
         /* wait for clock stretching */
-        if (TIMEOUT_HAS_IT_TIMED_OUT(init_timeout_counter, timeout)) {
+        if ((timeout != I2C_TIMEOUT_INFINITE) && TIMEOUT_HAS_IT_TIMED_OUT(init_timeout_counter, timeout)) {
             return I2C_STATUS_TIMEOUT;
         }
     }
@@ -348,7 +348,7 @@ static int16_t i2c_read_acknack(uint16_t timeout, uint8_t ack) {
         WRITE_PIN(I2C_BITBANG_SCL_PIN, 1);
         while (READ_PIN(I2C_BITBANG_SCL_PIN) == 0) {
             /* wait for clock stretching */
-            if (TIMEOUT_HAS_IT_TIMED_OUT(init_timeout_counter, timeout)) {
+            if ((timeout != I2C_TIMEOUT_INFINITE) && TIMEOUT_HAS_IT_TIMED_OUT(init_timeout_counter, timeout)) {
                 return I2C_STATUS_TIMEOUT;
             }
         }
@@ -377,7 +377,7 @@ static int16_t i2c_read_acknack(uint16_t timeout, uint8_t ack) {
     WRITE_PIN(I2C_BITBANG_SCL_PIN, 1);
     while (READ_PIN(I2C_BITBANG_SCL_PIN) == 0) {
         /* wait for clock stretching */
-        if (TIMEOUT_HAS_IT_TIMED_OUT(init_timeout_counter, timeout)) {
+        if ((timeout != I2C_TIMEOUT_INFINITE) && TIMEOUT_HAS_IT_TIMED_OUT(init_timeout_counter, timeout)) {
             return I2C_STATUS_TIMEOUT;
         }
     }
@@ -413,7 +413,7 @@ void i2c_stop(void)
     WRITE_PIN(I2C_BITBANG_SCL_PIN, 1);
     while (READ_PIN(I2C_BITBANG_SCL_PIN) == 0) {
         /* wait for clock stretching */
-        if (TIMEOUT_HAS_IT_TIMED_OUT(init_timeout_counter, I2C_BITBANG_HARDCODED_TIMEOUT_ON_STOP_MS)) {
+        if ((I2C_BITBANG_HARDCODED_TIMEOUT_ON_STOP_MS != I2C_TIMEOUT_INFINITE) && TIMEOUT_HAS_IT_TIMED_OUT(init_timeout_counter, I2C_BITBANG_HARDCODED_TIMEOUT_ON_STOP_MS)) {
             return;
         }
     }
