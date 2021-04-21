@@ -273,11 +273,6 @@ i2c_status_t i2c_write(uint8_t data, uint16_t timeout) {
 #ifdef USE_SYSCLOCK_TIMER_FOR_CYCLE_LENGTH
     TIMEOUT_START_TIME_TYPE init_cycle_counter = TIMEOUT_GET_COUNTER();
 #endif
-    I2C_BITBANG_WAIT_NS(T_ACK_VALID_TIME_NS);
-    if ((READ_PIN(I2C_BITBANG_SCL_PIN) != 0) ||
-        (READ_PIN(I2C_BITBANG_SDA_PIN) == 0)) {
-        return I2C_STATUS_ERROR;
-    }
     TIMEOUT_START_TIME_TYPE init_timeout_counter = TIMEOUT_GET_COUNTER();
     for (int8_t i=7; i>=0; i--) {
         WRITE_PIN(I2C_BITBANG_SDA_PIN, ((data >> i) & 1));
@@ -330,9 +325,6 @@ i2c_status_t i2c_write(uint8_t data, uint16_t timeout) {
 }
 
 static int16_t i2c_read_acknack(uint16_t timeout, uint8_t ack) {
-    if (READ_PIN(I2C_BITBANG_SCL_PIN) != 0) {
-        return I2C_STATUS_ERROR;
-    }
     uint8_t data = 0;
     TIMEOUT_START_TIME_TYPE init_timeout_counter = TIMEOUT_GET_COUNTER();
     WRITE_PIN(I2C_BITBANG_SDA_PIN, 1); /* release the SDA pin so that the device can talk back */
