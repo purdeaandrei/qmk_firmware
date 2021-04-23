@@ -120,7 +120,8 @@
 #            ifndef F_CPU
 #                define F_CPU 16000000
 #            endif
-#            define I2C_BITBANG_WAIT_NS(time) __builtin_avr_delay_cycles(((time) * 1000ULL + (1000000000000ULL / F_CPU) - 1) / (1000000000000ULL / F_CPU))
+#            define NS_TO_AVR_CYCLES(time) (((time) * 1000ULL + (1000000000000ULL / F_CPU) - 1) / (1000000000000ULL / F_CPU))
+#            define I2C_BITBANG_WAIT_NS(time) __builtin_avr_delay_cycles(NS_TO_AVR_CYCLES(time))
 #        else
 #            warning "Using inaccurate delay method. Bitbang i2c will work but will be much slower."
 #            define I2C_BITBANG_WAIT_NS(time) wait_us(((time) + 999) / 1000)
@@ -135,6 +136,168 @@
 #endif
 
 #define I2C_BITBANG_HARDCODED_TIMEOUT_ON_STOP_MS 20
+
+#ifdef __AVR__
+
+#    define I2C_BITBANG_SDA_OUT_IO _SFR_IO_ADDR(DDRx_ADDRESS(I2C_BITBANG_SDA_PIN))
+#    define I2C_BITBANG_SCL_OUT_IO _SFR_IO_ADDR(DDRx_ADDRESS(I2C_BITBANG_SCL_PIN))
+#    define I2C_BITBANG_SDA_IN_IO _SFR_IO_ADDR(PINx_ADDRESS(I2C_BITBANG_SDA_PIN))
+#    define I2C_BITBANG_SCL_IN_IO _SFR_IO_ADDR(PINx_ADDRESS(I2C_BITBANG_SCL_PIN))
+#    define I2C_BITBANG_SDA_BIT (I2C_BITBANG_SDA_PIN & 0xf)
+#    define I2C_BITBANG_SCL_BIT (I2C_BITBANG_SCL_PIN & 0xf)
+
+/* The following instructions are 2 cycles each: */
+#    define WRITE_PIN_SDA_1 "cbi %[sda_out_io_addr], %[sda_bit_num]"
+#    define WRITE_PIN_SDA_0 "sbi %[sda_out_io_addr], %[sda_bit_num]"
+#    define WRITE_PIN_SCL_1 "cbi %[scl_out_io_addr], %[scl_bit_num]"
+#    define WRITE_PIN_SCL_0 "sbi %[scl_out_io_addr], %[scl_bit_num]"
+/* 1 cycle if not skipping. 2 cycles if skipping 1-word instruction, 3 cycles if skipping 2-word instruction */
+#    define SKIP_IF_SCL_IS_0 "sbic %[scl_in_io_addr], %[scl_bit_num]"
+/* 2 cycles: */
+#    define READ_SCL_TO_T_FLAG "in r0, %[scl_in_io_addr]\n\tbst r0, %[scl_bit_num]"
+#    define READ_SDA_PINREG_TO(register) "in " register ", %[sda_in_io_addr]"
+#    define SDA_REGISTER_TO_T_FLAG(register) "bst " register ", %[sda_bit_num]"
+#    define READ_SDA_TO_T_FLAG "in r0, %[sda_in_io_addr]\n\tbst r0, %[sda_bit_num]"
+
+#    define I2C_GPIO_CONSTRAINTS [sda_out_io_addr] "I" (I2C_BITBANG_SDA_OUT_IO), \
+                                 [scl_out_io_addr] "I" (I2C_BITBANG_SCL_OUT_IO), \
+                                 [sda_in_io_addr] "I" (I2C_BITBANG_SDA_IN_IO), \
+                                 [scl_in_io_addr] "I" (I2C_BITBANG_SCL_IN_IO), \
+                                 [sda_bit_num] "I" (I2C_BITBANG_SDA_BIT), \
+                                 [scl_bit_num] "I" (I2C_BITBANG_SCL_BIT)
+
+#define T_SCL_CLOCK_LOW_PERIOD_CYCLES NS_TO_AVR_CYCLES(T_SCL_CLOCK_LOW_PERIOD_NS)
+#define T_SCL_CLOCK_HIGH_PERIOD_CYCLES NS_TO_AVR_CYCLES(T_SCL_CLOCK_HIGH_PERIOD_NS)
+#define T_SCL_CLOCK_PERIOD_CYCLES ((F_CPU + (1000UL * I2C_BITBANG_FREQUENCY_KHZ) - 1) / (1000UL * I2C_BITBANG_FREQUENCY_KHZ))
+#define T_SCL_CLOCK_PADDING_CYCLES (T_SCL_CLOCK_PERIOD_CYCLES - T_SCL_CLOCK_LOW_PERIOD_CYCLES - T_SCL_CLOCK_HIGH_PERIOD_CYCLES)
+
+#    define AVR_DELAY_AMOUNT (T_SCL_CLOCK_LOW_PERIOD_CYCLES - 11)
+#    define AVR_DELAY_NAME delay_scl_clock_low_period_minus_11
+#    if AVR_DELAY_AMOUNT >= 8
+#        include "define_avr_delay.inc"
+#        define DELAY_SCL_CLOCK_LOW_PERIOD_MINUS_11 "call delay_scl_clock_low_period_minus_11"
+#    elif AVR_DELAY_AMOUNT == 7
+#        define DELAY_SCL_CLOCK_LOW_PERIOD_MINUS_11 "push r16\n\tpop r16\n\tnop\n\tnop\n\tnop"
+#    elif AVR_DELAY_AMOUNT == 6
+#        define DELAY_SCL_CLOCK_LOW_PERIOD_MINUS_11 "push r16\n\tpop r16\n\tnop\n\tnop"
+#    elif AVR_DELAY_AMOUNT == 5
+#        define DELAY_SCL_CLOCK_LOW_PERIOD_MINUS_11 "push r16\n\tpop r16\n\tnop"
+#    elif AVR_DELAY_AMOUNT == 4
+#        define DELAY_SCL_CLOCK_LOW_PERIOD_MINUS_11 "push r16\n\tpop r16"
+#    elif AVR_DELAY_AMOUNT == 3
+#        define DELAY_SCL_CLOCK_LOW_PERIOD_MINUS_11 "nop\n\tnop\n\tnop"
+#    elif AVR_DELAY_AMOUNT == 2
+#        define DELAY_SCL_CLOCK_LOW_PERIOD_MINUS_11 "nop\n\tnop"
+#    elif AVR_DELAY_AMOUNT == 1
+#        define DELAY_SCL_CLOCK_LOW_PERIOD_MINUS_11 "nop"
+#    else
+#        define DELAY_SCL_CLOCK_LOW_PERIOD_MINUS_11 ""
+#    endif
+#    undef AVR_DELAY_AMOUNT
+#    undef AVR_DELAY_NAME
+
+#    define AVR_DELAY_AMOUNT (T_SCL_CLOCK_LOW_PERIOD_CYCLES - 5)
+#    define AVR_DELAY_NAME delay_scl_clock_low_period_minus_5
+#    if AVR_DELAY_AMOUNT >= 8
+#        include "define_avr_delay.inc"
+#        define DELAY_SCL_CLOCK_LOW_PERIOD_MINUS_5 "call delay_scl_clock_low_period_minus_5"
+#    elif AVR_DELAY_AMOUNT == 7
+#        define DELAY_SCL_CLOCK_LOW_PERIOD_MINUS_5 "push r16\n\tpop r16\n\tnop\n\tnop\n\tnop"
+#    elif AVR_DELAY_AMOUNT == 6
+#        define DELAY_SCL_CLOCK_LOW_PERIOD_MINUS_5 "push r16\n\tpop r16\n\tnop\n\tnop"
+#    elif AVR_DELAY_AMOUNT == 5
+#        define DELAY_SCL_CLOCK_LOW_PERIOD_MINUS_5 "push r16\n\tpop r16\n\tnop"
+#    elif AVR_DELAY_AMOUNT == 4
+#        define DELAY_SCL_CLOCK_LOW_PERIOD_MINUS_5 "push r16\n\tpop r16"
+#    elif AVR_DELAY_AMOUNT == 3
+#        define DELAY_SCL_CLOCK_LOW_PERIOD_MINUS_5 "nop\n\tnop\n\tnop"
+#    elif AVR_DELAY_AMOUNT == 2
+#        define DELAY_SCL_CLOCK_LOW_PERIOD_MINUS_5 "nop\n\tnop"
+#    elif AVR_DELAY_AMOUNT == 1
+#        define DELAY_SCL_CLOCK_LOW_PERIOD_MINUS_5 "nop"
+#    else
+#        define DELAY_SCL_CLOCK_LOW_PERIOD_MINUS_5 ""
+#    endif
+#    undef AVR_DELAY_AMOUNT
+#    undef AVR_DELAY_NAME
+
+#    define AVR_DELAY_AMOUNT (T_SCL_CLOCK_HIGH_PERIOD_CYCLES - 3)
+#    define AVR_DELAY_NAME delay_scl_clock_high_period_minus_3
+#    if AVR_DELAY_AMOUNT >= 8
+#        include "define_avr_delay.inc"
+#        define DELAY_SCL_CLOCK_HIGH_PERIOD_MINUS_3 "call delay_scl_clock_high_period_minus_3"
+#    elif AVR_DELAY_AMOUNT == 7
+#        define DELAY_SCL_CLOCK_HIGH_PERIOD_MINUS_3 "push r16\n\tpop r16\n\tnop\n\tnop\n\tnop"
+#    elif AVR_DELAY_AMOUNT == 6
+#        define DELAY_SCL_CLOCK_HIGH_PERIOD_MINUS_3 "push r16\n\tpop r16\n\tnop\n\tnop"
+#    elif AVR_DELAY_AMOUNT == 5
+#        define DELAY_SCL_CLOCK_HIGH_PERIOD_MINUS_3 "push r16\n\tpop r16\n\tnop"
+#    elif AVR_DELAY_AMOUNT == 4
+#        define DELAY_SCL_CLOCK_HIGH_PERIOD_MINUS_3 "push r16\n\tpop r16"
+#    elif AVR_DELAY_AMOUNT == 3
+#        define DELAY_SCL_CLOCK_HIGH_PERIOD_MINUS_3 "nop\n\tnop\n\tnop"
+#    elif AVR_DELAY_AMOUNT == 2
+#        define DELAY_SCL_CLOCK_HIGH_PERIOD_MINUS_3 "nop\n\tnop"
+#    elif AVR_DELAY_AMOUNT == 1
+#        define DELAY_SCL_CLOCK_HIGH_PERIOD_MINUS_3 "nop"
+#    else
+#        define DELAY_SCL_CLOCK_HIGH_PERIOD_MINUS_3 ""
+#    endif
+#    undef AVR_DELAY_AMOUNT
+#    undef AVR_DELAY_NAME
+
+#    define AVR_DELAY_AMOUNT (T_SCL_CLOCK_HIGH_PERIOD_CYCLES - 6)
+#    define AVR_DELAY_NAME delay_scl_clock_high_period_minus_6
+#    if AVR_DELAY_AMOUNT >= 8
+#        include "define_avr_delay.inc"
+#        define DELAY_SCL_CLOCK_HIGH_PERIOD_MINUS_6 "call delay_scl_clock_high_period_minus_6"
+#    elif AVR_DELAY_AMOUNT == 7
+#        define DELAY_SCL_CLOCK_HIGH_PERIOD_MINUS_6 "push r16\n\tpop r16\n\tnop\n\tnop\n\tnop"
+#    elif AVR_DELAY_AMOUNT == 6
+#        define DELAY_SCL_CLOCK_HIGH_PERIOD_MINUS_6 "push r16\n\tpop r16\n\tnop\n\tnop"
+#    elif AVR_DELAY_AMOUNT == 5
+#        define DELAY_SCL_CLOCK_HIGH_PERIOD_MINUS_6 "push r16\n\tpop r16\n\tnop"
+#    elif AVR_DELAY_AMOUNT == 4
+#        define DELAY_SCL_CLOCK_HIGH_PERIOD_MINUS_6 "push r16\n\tpop r16"
+#    elif AVR_DELAY_AMOUNT == 3
+#        define DELAY_SCL_CLOCK_HIGH_PERIOD_MINUS_6 "nop\n\tnop\n\tnop"
+#    elif AVR_DELAY_AMOUNT == 2
+#        define DELAY_SCL_CLOCK_HIGH_PERIOD_MINUS_6 "nop\n\tnop"
+#    elif AVR_DELAY_AMOUNT == 1
+#        define DELAY_SCL_CLOCK_HIGH_PERIOD_MINUS_6 "nop"
+#    else
+#        define DELAY_SCL_CLOCK_HIGH_PERIOD_MINUS_6 ""
+#    endif
+#    undef AVR_DELAY_AMOUNT
+#    undef AVR_DELAY_NAME
+
+#    define AVR_DELAY_AMOUNT (T_SCL_CLOCK_PADDING_CYCLES - 3)
+#    define AVR_DELAY_NAME delay_scl_clock_padding_period_minus_3
+#    if AVR_DELAY_AMOUNT >= 8
+#        include "define_avr_delay.inc"
+#        define DELAY_SCL_CLOCK_PADDING_PERIOD_MINUS_3 "call delay_scl_clock_padding_period_minus_3"
+#    elif AVR_DELAY_AMOUNT == 7
+#        define DELAY_SCL_CLOCK_PADDING_PERIOD_MINUS_3 "push r16\n\tpop r16\n\tnop\n\tnop\n\tnop"
+#    elif AVR_DELAY_AMOUNT == 6
+#        define DELAY_SCL_CLOCK_PADDING_PERIOD_MINUS_3 "push r16\n\tpop r16\n\tnop\n\tnop"
+#    elif AVR_DELAY_AMOUNT == 5
+#        define DELAY_SCL_CLOCK_PADDING_PERIOD_MINUS_3 "push r16\n\tpop r16\n\tnop"
+#    elif AVR_DELAY_AMOUNT == 4
+#        define DELAY_SCL_CLOCK_PADDING_PERIOD_MINUS_3 "push r16\n\tpop r16"
+#    elif AVR_DELAY_AMOUNT == 3
+#        define DELAY_SCL_CLOCK_PADDING_PERIOD_MINUS_3 "nop\n\tnop\n\tnop"
+#    elif AVR_DELAY_AMOUNT == 2
+#        define DELAY_SCL_CLOCK_PADDING_PERIOD_MINUS_3 "nop\n\tnop"
+#    elif AVR_DELAY_AMOUNT == 1
+#        define DELAY_SCL_CLOCK_PADDING_PERIOD_MINUS_3 "nop"
+#    else
+#        define DELAY_SCL_CLOCK_PADDING_PERIOD_MINUS_3 ""
+#    endif
+#    undef AVR_DELAY_AMOUNT
+#    undef AVR_DELAY_NAME
+
+#endif
+
 
 bool started = false;
 bool has_been_used = false;
@@ -179,15 +342,165 @@ void i2c_init(void) {
     has_been_used = false;
 }
 
-i2c_status_t i2c_start(uint8_t address, uint16_t timeout) {
+inline static i2c_status_t i2c_write_raw(uint8_t databyte, uint16_t timeout, TIMEOUT_START_TIME_TYPE init_timeout_counter) __attribute__((always_inline));
+
+static i2c_status_t i2c_write_raw(uint8_t databyte, uint16_t timeout, TIMEOUT_START_TIME_TYPE init_timeout_counter) {
+#ifdef __AVR__
+    uint8_t bits_left = 8;
+    uint8_t ack = 1;
+restart_in_case_of_clock_stretch:
+    asm goto (
+            WRITE_PIN_SCL_0                          "\n\t" /* 2 cycles */
+            "nop"                                    "\n\t" /* 1 cycle - to equalize paths */
+            "nop"                                    "\n\t" /* 1 cycle - to equalize paths */
+            "nop"                                    "\n\t" /* 1 cycle - to equalize paths */
+        "1:"                                         "\n\t"
+            "rol %[databyte]"                        "\n\t" /* 1 cycle */
+            "brcs 2f"                                "\n\t" /* 1 cycle if condition is false, 2 if true */
+            WRITE_PIN_SDA_0                          "\n\t" /* 2 cycles */
+            "rjmp 3f"                                "\n\t" /* 2 cycles */
+        "2:"                                         "\n\t"
+            WRITE_PIN_SDA_1                          "\n\t" /* 2 cycles */
+            "nop"                                    "\n\t" /* 1 cycle to equalize paths */
+        "3:"                                         "\n\t"
+            DELAY_SCL_CLOCK_LOW_PERIOD_MINUS_11      "\n\t"
+            WRITE_PIN_SCL_1                          "\n\t" /* 2 cycles */
+            DELAY_SCL_CLOCK_PADDING_PERIOD_MINUS_3   "\n\t"
+            SKIP_IF_SCL_IS_0                         "\n\t" /* 1 cycle when false (not skipping), otherwise we don't care */
+            "rjmp 4f"                                "\n\t" /* 2 cycles */
+            "st %a[bits_left_pointer], %[bits_left]" "\n\t" /* on this branch we don't care if the performance degrades. */
+            "st %a[databyte_pointer], %[databyte]"   "\n\t"
+            "jmp %l[maybe_timeout]"                  "\n\t"
+        "4:"                                         "\n\t"
+            "nop"                                    "\n\t" /* 1 cycle */
+            DELAY_SCL_CLOCK_HIGH_PERIOD_MINUS_3      "\n\t"
+            WRITE_PIN_SCL_0                          "\n\t" /* 2 cycles */
+            "dec %[bits_left]"                       "\n\t" /* 1 cycle */
+            "brne 1b"                                "\n\t" /* 2 cycles when jumping, 1 cycle when not */
+            WRITE_PIN_SDA_1                          "\n\t" /* 2 cycles, release SDA for ACK */
+            "push r16"                               "\n\t" /* 2 cycles, used instead of nop */
+            "pop  r16"                               "\n\t" /* 2 cycles, used instead of nop */
+            "nop"                                    "\n\t" /* 1 cycle */
+            DELAY_SCL_CLOCK_LOW_PERIOD_MINUS_11      "\n\t"
+            WRITE_PIN_SCL_1                          "\n\t" /* 2 cycles */
+            DELAY_SCL_CLOCK_PADDING_PERIOD_MINUS_3   "\n\t"
+            SKIP_IF_SCL_IS_0                         "\n\t" /* 1 cycle when false (not skipping), otherwise we don't care */
+            "rjmp 5f"                                "\n\t" /* 2 cycles */
+            "jmp %l[maybe_timeout_on_ack_bit]"       "\n\t" /* on this branch we don't care if the performance degrades. */
+        "5:"                                         "\n\t"
+            READ_SDA_PINREG_TO("r0")                 "\n\t" /* 1 cycle */
+            DELAY_SCL_CLOCK_HIGH_PERIOD_MINUS_3      "\n\t"
+            WRITE_PIN_SCL_0                          "\n\t" /* 2 cycles */
+            SDA_REGISTER_TO_T_FLAG("r0")             "\n\t"
+            "eor r0, r0"                             "\n\t"
+            "bld r0, 1"                              "\n\t"
+            "st %a[databyte_pointer], r0"            "\n\t" // reuse databyte as output operand
+    :
+    : [bits_left] "r" (bits_left),
+      [databyte] "r" (databyte),
+      [bits_left_pointer] "e" (&bits_left),
+      [databyte_pointer] "e" (&databyte),
+      I2C_GPIO_CONSTRAINTS
+    : "memory", "0", "1"
+    : maybe_timeout, maybe_timeout_on_ack_bit );
+    ack = databyte;
+    goto after_maybe_timeout;
+maybe_timeout:
+    while (READ_PIN(I2C_BITBANG_SCL_PIN) == 0) {
+        /* wait for clock stretching */
+        if ((timeout != I2C_TIMEOUT_INFINITE) && TIMEOUT_HAS_IT_TIMED_OUT(init_timeout_counter, timeout)) {
+            return I2C_STATUS_TIMEOUT;
+        }
+    }
+
+    __builtin_avr_delay_cycles(T_SCL_CLOCK_HIGH_PERIOD_CYCLES + T_SCL_CLOCK_PADDING_CYCLES);
+    bits_left --;
+    if (bits_left != 0) {
+        goto restart_in_case_of_clock_stretch;
+    }
+    WRITE_PIN(I2C_BITBANG_SCL_PIN, 0);
+    WRITE_PIN(I2C_BITBANG_SDA_PIN, 1); /* release the SDA pin to get ACK/NACK */
+    __builtin_avr_delay_cycles(T_SCL_CLOCK_LOW_PERIOD_CYCLES);
+    WRITE_PIN(I2C_BITBANG_SCL_PIN, 1);
+    __builtin_avr_delay_cycles(T_SCL_CLOCK_PADDING_CYCLES);
+maybe_timeout_on_ack_bit:
+    while (READ_PIN(I2C_BITBANG_SCL_PIN) == 0) {
+        /* wait for clock stretching */
+        if ((timeout != I2C_TIMEOUT_INFINITE) && TIMEOUT_HAS_IT_TIMED_OUT(init_timeout_counter, timeout)) {
+            return I2C_STATUS_TIMEOUT;
+        }
+    }
+    ack = READ_PIN(I2C_BITBANG_SDA_PIN);
+    __builtin_avr_delay_cycles(T_SCL_CLOCK_HIGH_PERIOD_CYCLES);
+    WRITE_PIN(I2C_BITBANG_SCL_PIN, 0);
+after_maybe_timeout:
+#else
+#    ifdef USE_SYSCLOCK_TIMER_FOR_CYCLE_LENGTH
+    TIMEOUT_START_TIME_TYPE init_cycle_counter = TIMEOUT_GET_COUNTER();
+#    endif
+    WRITE_PIN(I2C_BITBANG_SCL_PIN, 0);
+    for (int8_t i=1; i<=8; i++) {
+        WRITE_PIN(I2C_BITBANG_SDA_PIN, ((databyte >> (8-i)) & 1));
+        I2C_BITBANG_WAIT_NS(T_SCL_CLOCK_LOW_PERIOD_NS);
+        WRITE_PIN(I2C_BITBANG_SCL_PIN, 1);
+        while (READ_PIN(I2C_BITBANG_SCL_PIN) == 0) {
+            /* wait for clock stretching */
+            if ((timeout != I2C_TIMEOUT_INFINITE) && TIMEOUT_HAS_IT_TIMED_OUT(init_timeout_counter, timeout)) {
+                return I2C_STATUS_TIMEOUT;
+            }
+        }
+#    ifdef USE_SYSCLOCK_TIMER_FOR_CYCLE_LENGTH
+        I2C_BITBANG_WAIT_NS(T_SCL_CLOCK_HIGH_PERIOD_NS);
+        while (((TIMEOUT_START_TIME_TYPE)(TIMEOUT_GET_COUNTER() - init_cycle_counter)) < (SCL_PERIOD_IN_SYSCLK_CYCLES - 3)) {
+            /* note: -3 is not architecture-specific, it comes from a fact that there's at least 3 distinct operations
+             * that are not counted: substraction with underflow, comparison, and reading of a new counter value
+             */
+            /* wait for SCL cycle length to fill up */
+        }
+        init_cycle_counter = TIMEOUT_GET_COUNTER();
+#    else
+        I2C_BITBANG_WAIT_NS(T_SCL_CLOCK_ACTUAL_HIGH_PERIOD_NS);
+#    endif
+        WRITE_PIN(I2C_BITBANG_SCL_PIN, 0);
+    }
+    WRITE_PIN(I2C_BITBANG_SDA_PIN, 1); /* release the SDA pin to get ACK/NACK */
+    I2C_BITBANG_WAIT_NS(T_SCL_CLOCK_LOW_PERIOD_NS);
+    WRITE_PIN(I2C_BITBANG_SCL_PIN, 1);
+    while (READ_PIN(I2C_BITBANG_SCL_PIN) == 0) {
+        /* wait for clock stretching */
+        if ((timeout != I2C_TIMEOUT_INFINITE) && TIMEOUT_HAS_IT_TIMED_OUT(init_timeout_counter, timeout)) {
+            return I2C_STATUS_TIMEOUT;
+        }
+    }
+    uint8_t ack = READ_PIN(I2C_BITBANG_SDA_PIN);
+#    ifdef USE_SYSCLOCK_TIMER_FOR_CYCLE_LENGTH
+    I2C_BITBANG_WAIT_NS(T_SCL_CLOCK_HIGH_PERIOD_NS);
+    while (((TIMEOUT_START_TIME_TYPE)(TIMEOUT_GET_COUNTER() - init_cycle_counter)) < (SCL_PERIOD_IN_SYSCLK_CYCLES - 2)) {
+        /* note: -2 is not architecture-specific, it comes from a fact that there's at least 2 distinct operations
+         * that are not counted: substraction with underflow, and comparison
+         */
+        /* wait for SCL cycle length to fill up */
+    }
+#    else
+    I2C_BITBANG_WAIT_NS(T_SCL_CLOCK_ACTUAL_HIGH_PERIOD_NS);
+#    endif
+    WRITE_PIN(I2C_BITBANG_SCL_PIN, 0);
+#endif
+    started = true;
+    if (ack != 0) return I2C_STATUS_ERROR;
+    return I2C_STATUS_SUCCESS;
+}
+
+inline static i2c_status_t i2c_only_start_condition_raw(TIMEOUT_START_TIME_TYPE init_timeout_counter, uint16_t timeout) __attribute__((always_inline));
+
+static i2c_status_t i2c_only_start_condition_raw(TIMEOUT_START_TIME_TYPE init_timeout_counter, uint16_t timeout) {
     if (!has_been_used) {
         has_been_used = true;
-        i2c_status_t ret = i2c_try_to_recover_potentially_locked_up_bus(address);
+        i2c_status_t ret = i2c_try_to_recover_potentially_locked_up_bus(timeout);
         if (I2C_STATUS_SUCCESS != ret) {
             return ret;
         }
     }
-    TIMEOUT_START_TIME_TYPE init_timeout_counter = TIMEOUT_GET_COUNTER();
     if (!started) {
         if ((READ_PIN(I2C_BITBANG_SCL_PIN) == 0) ||
             (READ_PIN(I2C_BITBANG_SDA_PIN) == 0)) {
@@ -213,128 +526,122 @@ i2c_status_t i2c_start(uint8_t address, uint16_t timeout) {
     /* start condition */
     WRITE_PIN(I2C_BITBANG_SDA_PIN, 0);
     I2C_BITBANG_WAIT_NS(T_HOLD_TIME_START_NS);
-#ifdef USE_SYSCLOCK_TIMER_FOR_CYCLE_LENGTH
-    TIMEOUT_START_TIME_TYPE init_cycle_counter = TIMEOUT_GET_COUNTER();
-#endif
-    WRITE_PIN(I2C_BITBANG_SCL_PIN, 0);
-    for (int8_t i=1; i<=8; i++) {
-        WRITE_PIN(I2C_BITBANG_SDA_PIN, ((address >> (8-i)) & 1));
-        I2C_BITBANG_WAIT_NS(T_SCL_CLOCK_LOW_PERIOD_NS);
-        WRITE_PIN(I2C_BITBANG_SCL_PIN, 1);
-        while (READ_PIN(I2C_BITBANG_SCL_PIN) == 0) {
-            /* wait for clock stretching */
-            if ((timeout != I2C_TIMEOUT_INFINITE) && TIMEOUT_HAS_IT_TIMED_OUT(init_timeout_counter, timeout)) {
-                return I2C_STATUS_TIMEOUT;
-            }
-        }
-#ifdef USE_SYSCLOCK_TIMER_FOR_CYCLE_LENGTH
-        I2C_BITBANG_WAIT_NS(T_SCL_CLOCK_HIGH_PERIOD_NS);
-        while (((TIMEOUT_START_TIME_TYPE)(TIMEOUT_GET_COUNTER() - init_cycle_counter)) < (SCL_PERIOD_IN_SYSCLK_CYCLES - 3)) {
-            /* note: -3 is not architecture-specific, it comes from a fact that there's at least 3 distinct operations
-             * that are not counted: substraction with underflow, comparison, and reading of a new counter value
-             */
-            /* wait for SCL cycle length to fill up */
-        }
-        init_cycle_counter = TIMEOUT_GET_COUNTER();
-#else
-        I2C_BITBANG_WAIT_NS(T_SCL_CLOCK_ACTUAL_HIGH_PERIOD_NS);
-#endif
-        WRITE_PIN(I2C_BITBANG_SCL_PIN, 0);
-    }
-    WRITE_PIN(I2C_BITBANG_SDA_PIN, 1); /* release the SDA pin to get ACK/NACK */
-    I2C_BITBANG_WAIT_NS(T_SCL_CLOCK_LOW_PERIOD_NS);
-    WRITE_PIN(I2C_BITBANG_SCL_PIN, 1);
-    while (READ_PIN(I2C_BITBANG_SCL_PIN) == 0) {
-        /* wait for clock stretching */
-        if ((timeout != I2C_TIMEOUT_INFINITE) && TIMEOUT_HAS_IT_TIMED_OUT(init_timeout_counter, timeout)) {
-            return I2C_STATUS_TIMEOUT;
-        }
-    }
-    uint8_t ack = READ_PIN(I2C_BITBANG_SDA_PIN);
-
-#ifdef USE_SYSCLOCK_TIMER_FOR_CYCLE_LENGTH
-    I2C_BITBANG_WAIT_NS(T_SCL_CLOCK_HIGH_PERIOD_NS);
-    while (((TIMEOUT_START_TIME_TYPE)(TIMEOUT_GET_COUNTER() - init_cycle_counter)) < (SCL_PERIOD_IN_SYSCLK_CYCLES - 2)) {
-        /* note: -2 is not architecture-specific, it comes from a fact that there's at least 2 distinct operations
-         * that are not counted: substraction with underflow, and comparison
-         */
-        /* wait for SCL cycle length to fill up */
-    }
-#else
-    I2C_BITBANG_WAIT_NS(T_SCL_CLOCK_ACTUAL_HIGH_PERIOD_NS);
-#endif
-    WRITE_PIN(I2C_BITBANG_SCL_PIN, 0);
-    started = true;
-    if (ack != 0) return I2C_STATUS_ERROR;
     return I2C_STATUS_SUCCESS;
+}
+
+i2c_status_t i2c_start(uint8_t address, uint16_t timeout) {
+    TIMEOUT_START_TIME_TYPE init_timeout_counter = TIMEOUT_GET_COUNTER();
+    i2c_status_t ret = i2c_only_start_condition_raw(init_timeout_counter, timeout);
+    if (ret != I2C_STATUS_SUCCESS) {
+        return ret;
+    }
+    return i2c_write_raw(address, timeout, init_timeout_counter);
 }
 
 i2c_status_t i2c_write(uint8_t data, uint16_t timeout) {
-#ifdef USE_SYSCLOCK_TIMER_FOR_CYCLE_LENGTH
-    TIMEOUT_START_TIME_TYPE init_cycle_counter = TIMEOUT_GET_COUNTER();
-#endif
     TIMEOUT_START_TIME_TYPE init_timeout_counter = TIMEOUT_GET_COUNTER();
-    for (int8_t i=7; i>=0; i--) {
-        WRITE_PIN(I2C_BITBANG_SDA_PIN, ((data >> i) & 1));
-        I2C_BITBANG_WAIT_NS(T_SCL_CLOCK_LOW_PERIOD_NS);
-        WRITE_PIN(I2C_BITBANG_SCL_PIN, 1);
-        while (READ_PIN(I2C_BITBANG_SCL_PIN) == 0) {
-            /* wait for clock stretching */
-            if ((timeout != I2C_TIMEOUT_INFINITE) && TIMEOUT_HAS_IT_TIMED_OUT(init_timeout_counter, timeout)) {
-                return I2C_STATUS_TIMEOUT;
-            }
-        }
-#ifdef USE_SYSCLOCK_TIMER_FOR_CYCLE_LENGTH
-        I2C_BITBANG_WAIT_NS(T_SCL_CLOCK_HIGH_PERIOD_NS);
-        while (((TIMEOUT_START_TIME_TYPE)(TIMEOUT_GET_COUNTER() - init_cycle_counter)) < (SCL_PERIOD_IN_SYSCLK_CYCLES - 3)) {
-            /* note: -3 is not architecture-specific, it comes from a fact that there's at least 3 distinct operations
-             * that are not counted: substraction with underflow, comparison, and reading of a new counter value
-             */
-            /* wait for SCL cycle length to fill up */
-        }
-        init_cycle_counter = TIMEOUT_GET_COUNTER();
-#else
-        I2C_BITBANG_WAIT_NS(T_SCL_CLOCK_ACTUAL_HIGH_PERIOD_NS);
-#endif
-        WRITE_PIN(I2C_BITBANG_SCL_PIN, 0);
-    }
-    WRITE_PIN(I2C_BITBANG_SDA_PIN, 1); /* release the SDA pin to get ACK/NACK */
-    I2C_BITBANG_WAIT_NS(T_SCL_CLOCK_LOW_PERIOD_NS);
-    WRITE_PIN(I2C_BITBANG_SCL_PIN, 1);
+    return i2c_write_raw(data, timeout, init_timeout_counter);
+}
+
+inline static int16_t i2c_read_acknack_raw(uint16_t timeout, uint8_t ack) __attribute__((always_inline));
+static int16_t i2c_read_acknack_raw(uint16_t timeout, uint8_t ack) {
+    uint8_t data = 0;
+    TIMEOUT_START_TIME_TYPE init_timeout_counter = TIMEOUT_GET_COUNTER();
+#ifdef __AVR__
+    uint8_t bits_left = 8;
+read_restart_in_case_of_clock_stretch:
+    asm goto (
+        /* At the start we can assume SCL is already zero, casue there was always at least one raw write before reading,
+         * that is, at least the i2c address has been transmitted */
+            WRITE_PIN_SDA_1                          "\n\t" /* 2 cycles */
+            "nop"                                    "\n\t" /* 3 nop cycles - to equalize paths */
+            "nop"                                    "\n\t" /* (mostly not necessary, but we can't know what creative */
+            "nop"                                    "\n\t" /*  optimizations future GCC comes up with, so this is safer) */
+        "1:"                                         "\n\t"
+            DELAY_SCL_CLOCK_LOW_PERIOD_MINUS_5       "\n\t"
+            WRITE_PIN_SCL_1                          "\n\t" /* 2 cycles */
+            DELAY_SCL_CLOCK_PADDING_PERIOD_MINUS_3   "\n\t"
+            SKIP_IF_SCL_IS_0                         "\n\t" /* 1 cycle when false (not skipping), otherwise we don't care */
+            "rjmp 2f"                                "\n\t" /* 2 cycles */
+            "st %a[bits_left_pointer], %[bits_left]" "\n\t" /* on this branch we don't care if the performance degrades. */
+            "st %a[databyte_pointer], %[databyte]"   "\n\t"
+            "jmp %l[read_maybe_timeout]"             "\n\t"
+        "2:"                                         "\n\t"
+            "lsl %[databyte]"                        "\n\t" /* 1 cycle */
+            READ_SDA_TO_T_FLAG                       "\n\t" /* 2 cycles */
+            "bld %[databyte], 0"                     "\n\t" /* 1 cycle */
+            DELAY_SCL_CLOCK_HIGH_PERIOD_MINUS_6      "\n\t"
+            WRITE_PIN_SCL_0                          "\n\t" /* 2 cycles */
+            "dec %[bits_left]"                       "\n\t" /* 1 cycle */
+            "brne 1b"                                "\n\t" /* 2 cycles when jumping, 1 cycle when not */
+            "tst %[ack]"                             "\n\t" /* 1 cycle */
+            "brne 3f"                                "\n\t" /* 1 cycle if condition is false, 2 if true */
+            WRITE_PIN_SDA_0                          "\n\t" /* 2 cycles */
+            "rjmp 4f"                                "\n\t" /* 2 cycles */
+        "3:"                                         "\n\t"
+            WRITE_PIN_SDA_1                          "\n\t" /* 2 cycles */
+            "nop"                                    "\n\t" /* 1 cycle to equalize paths */
+        "4:"                                         "\n\t"
+            DELAY_SCL_CLOCK_LOW_PERIOD_MINUS_11      "\n\t"
+            "nop"                                    "\n\t" /* 1 cycle just to re-use the low-11 delay specification above */
+            WRITE_PIN_SCL_1                          "\n\t" /* 2 cycles */
+            DELAY_SCL_CLOCK_PADDING_PERIOD_MINUS_3   "\n\t"
+            SKIP_IF_SCL_IS_0                         "\n\t" /* 1 cycle when false (not skipping), otherwise we don't care */
+            "rjmp 5f"                                "\n\t" /* 2 cycles */
+            "st %a[databyte_pointer], %[databyte]"   "\n\t" /* on this branch we don't care if the performance degrades. */
+            "jmp %l[read_maybe_timeout_on_ack_bit]"  "\n\t"
+        "5:"                                         "\n\t"
+            DELAY_SCL_CLOCK_HIGH_PERIOD_MINUS_3      "\n\t"
+            "nop"                                    "\n\t" /* 1 cycle just to re-use the high-3 delay specification above */
+            WRITE_PIN_SCL_0                          "\n\t" /* 2 cycles */
+            "st %a[databyte_pointer], %[databyte]"   "\n\t"
+    :
+    : [bits_left] "r" (bits_left),
+      [databyte] "r" (data),
+      [bits_left_pointer] "e" (&bits_left),
+      [databyte_pointer] "e" (&data),
+      [ack] "r" (ack),
+      I2C_GPIO_CONSTRAINTS
+    : "memory", "0", "1"
+    : read_maybe_timeout, read_maybe_timeout_on_ack_bit );
+    return data;
+read_maybe_timeout:
     while (READ_PIN(I2C_BITBANG_SCL_PIN) == 0) {
         /* wait for clock stretching */
         if ((timeout != I2C_TIMEOUT_INFINITE) && TIMEOUT_HAS_IT_TIMED_OUT(init_timeout_counter, timeout)) {
             return I2C_STATUS_TIMEOUT;
         }
     }
-    uint8_t ack = READ_PIN(I2C_BITBANG_SDA_PIN);
-#ifdef USE_SYSCLOCK_TIMER_FOR_CYCLE_LENGTH
-    I2C_BITBANG_WAIT_NS(T_SCL_CLOCK_HIGH_PERIOD_NS);
-    while (((TIMEOUT_START_TIME_TYPE)(TIMEOUT_GET_COUNTER() - init_cycle_counter)) < (SCL_PERIOD_IN_SYSCLK_CYCLES - 2)) {
-        /* note: -2 is not architecture-specific, it comes from a fact that there's at least 2 distinct operations
-         * that are not counted: substraction with underflow, and comparison
-         */
-        /* wait for SCL cycle length to fill up */
-    }
-#else
-    I2C_BITBANG_WAIT_NS(T_SCL_CLOCK_ACTUAL_HIGH_PERIOD_NS);
-#endif
+    data = (data << 1) | !!READ_PIN(I2C_BITBANG_SDA_PIN);
+    __builtin_avr_delay_cycles(T_SCL_CLOCK_HIGH_PERIOD_CYCLES + T_SCL_CLOCK_PADDING_CYCLES);
+    bits_left --;
     WRITE_PIN(I2C_BITBANG_SCL_PIN, 0);
-    if (ack != 0) return I2C_STATUS_ERROR;
-    return I2C_STATUS_SUCCESS;
-}
-
-static int16_t i2c_read_acknack(uint16_t timeout, uint8_t ack) {
-    uint8_t data = 0;
-    TIMEOUT_START_TIME_TYPE init_timeout_counter = TIMEOUT_GET_COUNTER();
+    if (bits_left != 0) {
+        goto read_restart_in_case_of_clock_stretch;
+    }
+    WRITE_PIN(I2C_BITBANG_SDA_PIN, ack); /* release the SDA pin to get ACK/NACK */
+    __builtin_avr_delay_cycles(T_SCL_CLOCK_LOW_PERIOD_CYCLES);
+    WRITE_PIN(I2C_BITBANG_SCL_PIN, 1);
+    __builtin_avr_delay_cycles(T_SCL_CLOCK_PADDING_CYCLES);
+read_maybe_timeout_on_ack_bit:
+    while (READ_PIN(I2C_BITBANG_SCL_PIN) == 0) {
+        /* wait for clock stretching */
+        if ((timeout != I2C_TIMEOUT_INFINITE) && TIMEOUT_HAS_IT_TIMED_OUT(init_timeout_counter, timeout)) {
+            return I2C_STATUS_TIMEOUT;
+        }
+    }
+    __builtin_avr_delay_cycles(T_SCL_CLOCK_HIGH_PERIOD_CYCLES);
+    WRITE_PIN(I2C_BITBANG_SCL_PIN, 0);
+    return data;
+#else
     WRITE_PIN(I2C_BITBANG_SDA_PIN, 1); /* release the SDA pin so that the device can talk back */
-#ifdef USE_SYSCLOCK_TIMER_FOR_CYCLE_LENGTH
+#    ifdef USE_SYSCLOCK_TIMER_FOR_CYCLE_LENGTH
     TIMEOUT_START_TIME_TYPE init_cycle_counter = TIMEOUT_GET_COUNTER();
     /* Note: there is no write of the SCL pin after reading the counter here, but with
      * all other delays involving calling this function, and writing the SDA pin above,
      * the clock period constraint is not violated.
      */
-#endif
+#    endif
     for (int8_t i=7; i>=0; i--) {
         I2C_BITBANG_WAIT_NS(T_SCL_CLOCK_LOW_PERIOD_NS);
         WRITE_PIN(I2C_BITBANG_SCL_PIN, 1);
@@ -345,7 +652,7 @@ static int16_t i2c_read_acknack(uint16_t timeout, uint8_t ack) {
             }
         }
         data = (data << 1) | !!READ_PIN(I2C_BITBANG_SDA_PIN);
-#ifdef USE_SYSCLOCK_TIMER_FOR_CYCLE_LENGTH
+#    ifdef USE_SYSCLOCK_TIMER_FOR_CYCLE_LENGTH
         I2C_BITBANG_WAIT_NS(T_SCL_CLOCK_HIGH_PERIOD_NS);
         while (((TIMEOUT_START_TIME_TYPE)(TIMEOUT_GET_COUNTER() - init_cycle_counter)) < (SCL_PERIOD_IN_SYSCLK_CYCLES - 3)) {
             /* note: -3 is not architecture-specific, it comes from a fact that there's at least 3 distinct operations
@@ -354,9 +661,9 @@ static int16_t i2c_read_acknack(uint16_t timeout, uint8_t ack) {
             /* wait for SCL cycle length to fill up */
         }
         init_cycle_counter = TIMEOUT_GET_COUNTER();
-#else
+#    else
         I2C_BITBANG_WAIT_NS(T_SCL_CLOCK_ACTUAL_HIGH_PERIOD_NS);
-#endif
+#    endif
         WRITE_PIN(I2C_BITBANG_SCL_PIN, 0);
     }
     I2C_BITBANG_WAIT_NS(T_DATA_VALID_TIME_NS);
@@ -373,7 +680,7 @@ static int16_t i2c_read_acknack(uint16_t timeout, uint8_t ack) {
             return I2C_STATUS_TIMEOUT;
         }
     }
-#ifdef USE_SYSCLOCK_TIMER_FOR_CYCLE_LENGTH
+#    ifdef USE_SYSCLOCK_TIMER_FOR_CYCLE_LENGTH
     I2C_BITBANG_WAIT_NS(T_SCL_CLOCK_HIGH_PERIOD_NS);
     while (((TIMEOUT_START_TIME_TYPE)(TIMEOUT_GET_COUNTER() - init_cycle_counter)) < (SCL_PERIOD_IN_SYSCLK_CYCLES - 2)) {
         /* note: -2 is not architecture-specific, it comes from a fact that there's at least 2 distinct operations
@@ -381,20 +688,21 @@ static int16_t i2c_read_acknack(uint16_t timeout, uint8_t ack) {
          */
         /* wait for SCL cycle length to fill up */
     }
-#else
+#    else
     I2C_BITBANG_WAIT_NS(T_SCL_CLOCK_ACTUAL_HIGH_PERIOD_NS);
-#endif
+#    endif
     WRITE_PIN(I2C_BITBANG_SCL_PIN, 0);
     WRITE_PIN(I2C_BITBANG_SDA_PIN, 1); /* release the SDA pin */
     return data;
+#endif
 }
 
 int16_t i2c_read_ack(uint16_t timeout) {
-    return i2c_read_acknack(timeout, 0);
+    return i2c_read_acknack_raw(timeout, 0);
 }
 
 int16_t i2c_read_nack(uint16_t timeout) {
-    return i2c_read_acknack(timeout, 1);
+    return i2c_read_acknack_raw(timeout, 1);
 }
 
 void i2c_stop(void)
@@ -416,83 +724,89 @@ void i2c_stop(void)
 }
 
 i2c_status_t i2c_transmit(uint8_t address, const uint8_t* data, uint16_t length, uint16_t timeout) {
-    i2c_status_t status = i2c_start(address | I2C_WRITE, timeout);
+    TIMEOUT_START_TIME_TYPE init_timeout_counter = TIMEOUT_GET_COUNTER();
+    i2c_status_t ret = i2c_only_start_condition_raw(init_timeout_counter, timeout);
+    if (ret == I2C_STATUS_SUCCESS) {
+        ret = i2c_write_raw(address | I2C_WRITE, timeout, init_timeout_counter);
 
-    for (uint16_t i = 0; i < length && status >= 0; i++) {
-        status = i2c_write(data[i], timeout);
+        for (uint16_t i = 0; i < length && ret == I2C_STATUS_SUCCESS; i++) {
+            init_timeout_counter = TIMEOUT_GET_COUNTER();
+            ret = i2c_write_raw(data[i], timeout, init_timeout_counter);
+        }
     }
 
     i2c_stop();
-
-    return status;
+    return ret;
 }
 
 i2c_status_t i2c_receive(uint8_t address, uint8_t* data, uint16_t length, uint16_t timeout) {
-    i2c_status_t status = i2c_start(address | I2C_READ, timeout);
+    TIMEOUT_START_TIME_TYPE init_timeout_counter = TIMEOUT_GET_COUNTER();
+    i2c_status_t ret = i2c_only_start_condition_raw(init_timeout_counter, timeout);
+    if (ret == I2C_STATUS_SUCCESS) {
+        ret = i2c_write_raw(address | I2C_READ, timeout, init_timeout_counter);
 
-    for (uint16_t i = 0; i < (length - 1) && status >= 0; i++) {
-        status = i2c_read_ack(timeout);
-        if (status >= 0) {
-            data[i] = status;
+        for (uint16_t i = 0; i < length && ret >= 0; i++) {
+            ret = i2c_read_acknack_raw(timeout, i == (length - 1));
+            if (ret >= 0) {
+                data[i] = ret;
+            }
         }
     }
-
-    if (status >= 0) {
-        status = i2c_read_nack(timeout);
-        if (status >= 0) {
-            data[(length - 1)] = status;
-        }
-    }
-
     i2c_stop();
 
-    return (status < 0) ? status : I2C_STATUS_SUCCESS;
+    return (ret < 0) ? ret : I2C_STATUS_SUCCESS;
 }
 
 i2c_status_t i2c_writeReg(uint8_t devaddr, uint8_t regaddr, const uint8_t* data, uint16_t length, uint16_t timeout) {
-    i2c_status_t status = i2c_start(devaddr | 0x00, timeout);
-    if (status >= 0) {
-        status = i2c_write(regaddr, timeout);
-
-        for (uint16_t i = 0; i < length && status >= 0; i++) {
-            status = i2c_write(data[i], timeout);
+    TIMEOUT_START_TIME_TYPE init_timeout_counter = TIMEOUT_GET_COUNTER();
+    i2c_status_t ret = i2c_only_start_condition_raw(init_timeout_counter, timeout);
+    if (ret == I2C_STATUS_SUCCESS) {
+        ret = i2c_write_raw(devaddr | I2C_WRITE, timeout, init_timeout_counter);
+        if (ret == I2C_STATUS_SUCCESS) {
+            init_timeout_counter = TIMEOUT_GET_COUNTER();
+            ret = i2c_write_raw(regaddr, timeout, init_timeout_counter);
+            for (uint16_t i = 0; i < length && ret == I2C_STATUS_SUCCESS; i++) {
+                init_timeout_counter = TIMEOUT_GET_COUNTER();
+                ret = i2c_write_raw(data[i], timeout, init_timeout_counter);
+            }
         }
     }
 
     i2c_stop();
-
-    return status;
+    return ret;
 }
 
 i2c_status_t i2c_readReg(uint8_t devaddr, uint8_t regaddr, uint8_t* data, uint16_t length, uint16_t timeout) {
-    i2c_status_t status = i2c_start(devaddr, timeout);
-    if (status < 0) {
+    TIMEOUT_START_TIME_TYPE init_timeout_counter = TIMEOUT_GET_COUNTER();
+    i2c_status_t ret = i2c_only_start_condition_raw(init_timeout_counter, timeout);
+    if (ret != I2C_STATUS_SUCCESS) {
         goto error;
     }
-
-    status = i2c_write(regaddr, timeout);
-    if (status < 0) {
+    ret = i2c_write_raw(devaddr | I2C_WRITE, timeout, init_timeout_counter);
+    if (ret != I2C_STATUS_SUCCESS) {
         goto error;
     }
-
-    status = i2c_start(devaddr | 0x01, timeout);
-
-    for (uint16_t i = 0; i < (length - 1) && status >= 0; i++) {
-        status = i2c_read_ack(timeout);
-        if (status >= 0) {
-            data[i] = status;
-        }
+    init_timeout_counter = TIMEOUT_GET_COUNTER();
+    ret = i2c_write_raw(regaddr, timeout, init_timeout_counter);
+    if (ret != I2C_STATUS_SUCCESS) {
+        goto error;
     }
+    init_timeout_counter = TIMEOUT_GET_COUNTER();
+    ret = i2c_only_start_condition_raw(init_timeout_counter, timeout);
+    if (ret != I2C_STATUS_SUCCESS) {
+        goto error;
+    }
+    ret = i2c_write_raw(devaddr | I2C_READ, timeout, init_timeout_counter);
 
-    if (status >= 0) {
-        status = i2c_read_nack(timeout);
-        if (status >= 0) {
-            data[(length - 1)] = status;
+    for (uint16_t i = 0; i < length && ret >= 0; i++) {
+        ret = i2c_read_acknack_raw(timeout, i == (length - 1));
+        if (ret >= 0) {
+            data[i] = ret;
         }
     }
 
 error:
     i2c_stop();
 
-    return (status < 0) ? status : I2C_STATUS_SUCCESS;
+    return (ret < 0) ? ret : I2C_STATUS_SUCCESS;
 }
