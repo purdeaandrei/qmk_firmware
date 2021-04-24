@@ -254,4 +254,4 @@ To enable it set `I2C_DRIVER = bitbang` in `rules.mk`
 
  - On STM32 MCUs with RT clock (where `PORT_SUPPORTS_RT == TRUE`), the i2c bitbang driver is fairly efficient, and in fast mode it can achieve above 390kHz.
  - On STM32 MCUs without an RT clock, no optimisation has been attempted, and due to the granularity of the wait_us() functions, the driver will operate only around 25kHz. This may be improved by tweaking `CH_CFG_ST_FREQUENCY` and `CH_CFG_ST_TIMEDELTA`.
- - On AVR MCUs clocks of up to 168kHz have been observed in fast mode.
+ - On AVR MCUs running at 16MHz, optimized routines have been implemented, that can achieve exactly 400kHz in fast mode, as long as there are no interrupts, and clock stretching is never requested by the device.
