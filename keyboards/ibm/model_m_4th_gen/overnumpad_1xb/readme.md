@@ -11,6 +11,10 @@ This firmware is intended to support 4th generation IBM Model M keyboards (the o
 * Hardware Availability:
   * [controller](https://github.com/purdeaandrei/overnumpad_controller_1xb)
 
+To place the keyboard into bootloader mode in order to flash it, hold the ESC key while plugging the board in.
+It's possible to make this feature not work, by flashing the wrong firmware onto the keyboard.
+If that happens, open up the keyboard, and press the RST&PROG button to enter bootloader mode.
+
 Make example for this keyboard (after setting up your build environment):
 
     make ibm/model_m_4th_gen/overnumpad_1xb:default

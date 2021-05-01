@@ -10,6 +10,10 @@ Support Unicomp Spacesaver M keyboards with pre-2013 bottom row.
   * [controller](https://github.com/purdeaandrei/overnumpad_controller_1xb)
   * [keyboard](https://www.pckeyboard.com/)
 
+To place the keyboard into bootloader mode in order to flash it, hold the ESC key while plugging the board in.
+It's possible to make this feature not work, by flashing the wrong firmware onto the keyboard.
+If that happens, open up the keyboard, and press the RST&PROG button to enter bootloader mode.
+
 Make example for this keyboard (after setting up your build environment):
 
     make unicomp/spacesaver_m_pre_2013/overnumpad_1xb:default
