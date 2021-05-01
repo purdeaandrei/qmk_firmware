@@ -19,7 +19,7 @@
 void keyboard_post_init_kb(void)
 {
     // Led pins:
-    setPinOutput(C12); // left-most led, normally Num Lock, but on Spacesaver M it's Caps Lock
+    // C12 is the left-most led, normally Num Lock, but on Spacesaver M it's Caps Lock. Configured in config.h
     setPinOutput(C11); // middle led, always off on Spacesaver M
     writePin(C11, 0);
     setPinOutput(C10); // right-most led, normally Scroll Lock, but on Spacesaver M indicates function layer
@@ -58,11 +58,6 @@ bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
 }
 
 */
-bool led_update_kb(led_t led_state) {
-    writePin(C12, led_state.caps_lock);
-
-    return led_update_user(led_state);
-}
 
 layer_state_t layer_state_set_kb(layer_state_t state) {
     switch (get_highest_layer(state)) {

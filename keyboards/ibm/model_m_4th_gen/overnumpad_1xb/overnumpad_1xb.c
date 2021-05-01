@@ -18,10 +18,6 @@
 
 void keyboard_post_init_kb(void)
 {
-    // Led pins:
-    setPinOutput(C12);
-    setPinOutput(C11);
-    setPinOutput(C10);
     // Solenoid enable:
     setPinOutput(C13);
     writePin(C13, 1);
@@ -57,11 +53,3 @@ bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
 }
 
 */
-bool led_update_kb(led_t led_state) {
-    // put your keyboard LED indicator (ex: Caps Lock LED) toggling code here
-    writePin(C12, led_state.num_lock);
-    writePin(C11, led_state.caps_lock);
-    writePin(C10, led_state.scroll_lock);
-
-    return led_update_user(led_state);
-}

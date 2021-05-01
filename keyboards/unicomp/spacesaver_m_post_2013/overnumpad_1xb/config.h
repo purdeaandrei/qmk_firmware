@@ -74,3 +74,7 @@
 #define EXTERNAL_EEPROM_ADDRESS_SIZE 2
 #define EXTERNAL_EEPROM_WRITE_TIME 5
 #define EXTERNAL_EEPROM_WP_PIN A0
+
+#define LED_CAPS_LOCK_PIN C12
+#define LED_ON_STATE 1
+// C11 and C10 are also leds, but C11 is not used in this keyboard, and C10 is configured in ${keyboard}.c
